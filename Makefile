@@ -18,7 +18,9 @@ endef
 
 define Package/esp-ubus-module/install
 	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/esp-ubus-module $(1)/usr/bin
+	$(INSTALL_BIN) ./files/esp-ubus-module.init $(1)/etc/init.d/esp-ubus-module
 endef
 
 $(eval $(call BuildPackage,esp-ubus-module))
