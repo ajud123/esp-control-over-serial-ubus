@@ -1,3 +1,6 @@
+#ifndef ESP_UBUS_WRAPPER
+#define ESP_UBUS_WRAPPER
+
 #include <libubus.h>
 enum { ERR_GET_FAILED = 50, ERR_OPEN_FAILED, ERR_READ_FAILED, ERR_WRITE_FAILED, ERR_INVALID_DEVICE, ERR_UNKNOWN_FN };
 
@@ -21,3 +24,5 @@ void run_ubus();
 void cleanup_ubus(struct ubus_context *ctx);
 
 void stop_ubus();
+
+#endif

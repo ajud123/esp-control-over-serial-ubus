@@ -17,7 +17,7 @@ const struct err_msg errors[] = {
 	[S_ESP_CHECK]  = { .msg = "Failed to open port", .err = ERR_INVALID_DEVICE },
 };
 
-struct err_msg *get_error(int func)
+const struct err_msg *get_error(int func)
 {
 	if (func < 0 || func >= __S_MAX_FN) {
 		return &(errors[S_UNKNOWN_FN]);
@@ -25,11 +25,11 @@ struct err_msg *get_error(int func)
 	return &(errors[func]);
 }
 
-int s_handle_err(int err, struct sp_port *port, int fn, struct ubus_pkg *pkg)
+int s_handle_err(int retval, struct sp_port *port, int fn, struct ubus_pkg *pkg)
 {
-	if (err < 0) {
+	if (retval < 0) {
 		char *errmsg	    = sp_last_error_message();
-		struct err_msg *err = get_error(fn);
+		const struct err_msg *err = get_error(fn);
 		write_log(LOG_ERR, "%s: %s", err->msg, errmsg);
 
 		if (pkg != NULL) {
@@ -44,7 +44,7 @@ int s_handle_err(int err, struct sp_port *port, int fn, struct ubus_pkg *pkg)
 			sp_close(port);
 			sp_free_port(port);
 		}
-		return err;
+		return retval;
 	}
 	return 0;
 }
@@ -61,7 +61,7 @@ void configure_port(struct sp_port *port)
 int setup_port(char *portname, struct sp_port *port, struct ubus_pkg *pkg)
 {
 	write_log(LOG_INFO, "Getting port %s...", portname);
-	if (try_handle_err(sp_get_port_by_name(portname, &port), port, S_GET_PORT, pkg) < 0)
+	if (s_handle_err(sp_get_port_by_name(portname, &port), port, S_GET_PORT, pkg) < 0)
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
 	int vid = 0;
@@ -72,7 +72,7 @@ int setup_port(char *portname, struct sp_port *port, struct ubus_pkg *pkg)
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
 	write_log(LOG_INFO, "Opening port %s...", portname);
-	if (try_handle_err(sp_open(port, SP_MODE_READ_WRITE), port, S_OPEN_PORT, pkg))
+	if (s_handle_err(sp_open(port, SP_MODE_READ_WRITE), port, S_OPEN_PORT, pkg))
 		return UBUS_STATUS_UNKNOWN_ERROR;
 
 	write_log(LOG_INFO, "Setting up serial protocol for port %s...", portname);
@@ -104,14 +104,14 @@ int populate_devices_blob(struct blob_buf *b)
 		sp_get_port_usb_vid_pid(port, &vid, &pid);
 		if (vid != ESP_VENDOR && pid != ESP_PRODUCT)
 			continue;
-		void *device = blobmsg_open_table(&b, NULL);
-		blobmsg_add_string(&b, "port", port_name);
-		blobmsg_add_u32(&b, "vendor_id", vid);
-		blobmsg_add_u32(&b, "product_id", pid);
+		void *device = blobmsg_open_table(b, NULL);
+		blobmsg_add_string(b, "port", port_name);
+		blobmsg_add_u32(b, "vendor_id", vid);
+		blobmsg_add_u32(b, "product_id", pid);
 		write_log(LOG_INFO, "Found port: %s\n", port_name);
-		blobmsg_close_table(&b, device);
+		blobmsg_close_table(b, device);
 	}
-	blobmsg_close_array(&b, cookie);
+	blobmsg_close_array(b, cookie);
 	sp_free_port_list(port_list);
         return 0;
 }

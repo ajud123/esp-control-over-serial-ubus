@@ -88,16 +88,15 @@ int esp_pin(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_reque
 		return UBUS_STATUS_UNKNOWN_ERROR;
 	write_log(LOG_INFO, "Writing to port %s finished", portname);
 
-	int bytes = 256;
-	char *buf = calloc(bytes, sizeof(char));
+	char buf[256];
+        memset(buf, '\0', sizeof(char)*256);
 
 	write_log(LOG_ERR, "Reading bytes in port %s", portname);
-	if (s_handle_err(sp_blocking_read(port, buf, bytes, READ_TIMEOUT), port, S_WRITE, &pkg) < 0)
+	if (s_handle_err(sp_blocking_read(port, buf, 256, READ_TIMEOUT), port, S_WRITE, &pkg) < 0)
 		return UBUS_STATUS_UNKNOWN_ERROR;
 	write_log(LOG_ERR, "Reading from port %s finished", portname);
 
 	blobmsg_add_json_from_string(&b, buf);
-	free(buf);
 
 	ubus_send_reply(ctx, req, b.head);
 	blob_buf_free(&b);
@@ -149,14 +148,13 @@ int esp_get(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_reque
 		return UBUS_STATUS_UNKNOWN_ERROR;
 	write_log(LOG_INFO, "Writing to port %s finished", portname);
 
-	int bytes = 256;
-	char *buf = calloc(bytes, sizeof(char));
+	char buf[256];
+        memset(buf, '\0', sizeof(char)*256);
 
 	write_log(LOG_ERR, "Reading bytes in port %s", portname);
-	if (s_handle_err(sp_blocking_read(port, buf, bytes, READ_TIMEOUT), port, S_READ, &pkg) < 0)
+	if (s_handle_err(sp_blocking_read(port, buf, 256, READ_TIMEOUT), port, S_READ, &pkg) < 0)
 		return UBUS_STATUS_UNKNOWN_ERROR;
 	blobmsg_add_json_from_string(&b, buf);
-	free(buf);
 
 	ubus_send_reply(ctx, req, b.head);
 	blob_buf_free(&b);
