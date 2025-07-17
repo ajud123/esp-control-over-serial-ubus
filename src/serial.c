@@ -58,26 +58,26 @@ void configure_port(struct sp_port *port)
 	sp_set_flowcontrol(port, SP_FLOWCONTROL_NONE);
 }
 
-int setup_port(char *portname, struct sp_port *port, struct ubus_pkg *pkg)
+int setup_port(char *portname, struct sp_port **port, struct ubus_pkg *pkg)
 {
 	write_log(LOG_INFO, "Getting port %s...", portname);
-	if (s_handle_err(sp_get_port_by_name(portname, &port), port, S_GET_PORT, pkg) < 0)
+	if (s_handle_err(sp_get_port_by_name(portname, port), *port, S_GET_PORT, pkg) < 0)
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
 	int vid = 0;
 	int pid = 0;
-	sp_get_port_usb_vid_pid(port, &vid, &pid);
+	sp_get_port_usb_vid_pid(*port, &vid, &pid);
 
-	if (s_handle_err(vid != ESP_VENDOR && pid != ESP_PRODUCT, port, S_ESP_CHECK, pkg))
+	if (s_handle_err(vid != ESP_VENDOR && pid != ESP_PRODUCT, *port, S_ESP_CHECK, pkg))
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
 	write_log(LOG_INFO, "Opening port %s...", portname);
-	if (s_handle_err(sp_open(port, SP_MODE_READ_WRITE), port, S_OPEN_PORT, pkg))
+	if (s_handle_err(sp_open(*port, SP_MODE_READ_WRITE), *port, S_OPEN_PORT, pkg))
 		return UBUS_STATUS_UNKNOWN_ERROR;
 
 	write_log(LOG_INFO, "Setting up serial protocol for port %s...", portname);
 
-	configure_port(port);
+	configure_port(*port);
 
 	return 0;
 }

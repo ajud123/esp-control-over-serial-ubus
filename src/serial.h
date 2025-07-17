@@ -24,7 +24,7 @@ static const char PIN_FMT[] = "{\"action\": \"%s\", \"pin\": %d}";
 static const int READ_TIMEOUT = 2000;
 
 int s_handle_err(int err, struct sp_port *port, int fn, struct ubus_pkg *pkg);
-int setup_port(char *portname, struct sp_port *port, struct ubus_pkg *pkg);
+int setup_port(char *portname, struct sp_port **port, struct ubus_pkg *pkg);
 int populate_devices_blob(struct blob_buf *b);
 
 #endif

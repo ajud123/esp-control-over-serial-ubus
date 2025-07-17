@@ -76,7 +76,7 @@ int esp_pin(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_reque
 
 	struct sp_port *port = NULL;
 
-	int status = setup_port(portname, port, &pkg);
+	int status = setup_port(portname, &port, &pkg);
         if(status != 0)
                 return status;
 
@@ -134,7 +134,7 @@ int esp_get(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_reque
 
 	struct sp_port *port = NULL;
 
-	int status = setup_port(portname, port, &pkg);
+	int status = setup_port(portname, &port, &pkg);
         if(status != 0)
                 return status;
 
@@ -215,6 +215,7 @@ int initialise_ubus(struct ubus_context **ctx)
 
 	if (status != 0) {
 		write_log(LOG_CRIT, "Failed to initialize add esp object: %s", ubus_strerror(status));
+		write_log(LOG_CRIT, "argument: %x %x", *ctx, &esp_object);
 		ubus_free(*ctx);
 		uloop_done();
 		closelog();
