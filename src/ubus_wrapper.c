@@ -1,6 +1,6 @@
 #include "ubus_wrapper.h"
 #include "log.h"
-#include "serial_err.h"
+#include "serial.h"
 #include <libubox/blobmsg_json.h>
 #include <libubus.h>
 #include <ubusmsg.h>
@@ -45,38 +45,12 @@ int esp_devices(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_r
 	struct blob_buf b = {};
 	blob_buf_init(&b, 0);
 
-	struct sp_port **port_list;
+        int ret = populate_devices_blob(&b);
 
-	enum sp_return result = sp_list_ports(&port_list);
-
-	if (result != SP_OK) {
-		write_log(LOG_ERR, "sp_list_ports() failed!\n");
-		return -1;
-	}
-	int i;
-	void *cookie = blobmsg_open_array(&b, "devices");
-	for (i = 0; port_list[i] != NULL; i++) {
-		struct sp_port *port = port_list[i];
-		/* Get the name of the port. */
-		char *port_name = sp_get_port_name(port);
-		int vid		= 0;
-		int pid		= 0;
-		sp_get_port_usb_vid_pid(port, &vid, &pid);
-		if (vid != 0x10c4 && pid != 0xea60)
-			continue;
-		void *device = blobmsg_open_table(&b, NULL);
-		blobmsg_add_string(&b, "port", port_name);
-		blobmsg_add_u32(&b, "vendor_id", vid);
-		blobmsg_add_u32(&b, "product_id", pid);
-		write_log(LOG_INFO, "Found port: %s\n", port_name);
-		blobmsg_close_table(&b, device);
-	}
-	blobmsg_close_array(&b, cookie);
 	ubus_send_reply(ctx, req, b.head);
 	blob_buf_free(&b);
 
-	sp_free_port_list(port_list);
-	return 0;
+	return ret;
 };
 
 /*
@@ -89,7 +63,8 @@ int esp_pin(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_reque
 	(void)ctx;
 	(void)obj;
 	struct blob_attr *tb[__ESP_PIN_POL_MAX];
-	struct blob_buf b = {};
+	struct blob_buf b   = {};
+	struct ubus_pkg pkg = { .b = &b, .ctx = ctx, .req = req };
 	blob_buf_init(&b, 0);
 
 	blobmsg_parse(esp_pin_policy, __ESP_PIN_POL_MAX, tb, blob_data(msg), blob_len(msg));
@@ -100,33 +75,26 @@ int esp_pin(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_reque
 	int pin	       = blobmsg_get_u32(tb[ESP_PIN_PIN]);
 
 	struct sp_port *port = NULL;
-        write_log(LOG_INFO, "Getting port %s...", portname);
-	if (try_handle_err(sp_get_port_by_name(portname, &port), port, S_GET_PORT, &b, ctx, req) < 0)
-		return UBUS_STATUS_INVALID_ARGUMENT;
-        write_log(LOG_INFO, "Opening port %s...", portname);
-	if (try_handle_err(sp_open(port, SP_MODE_READ_WRITE), port, S_OPEN_PORT, &b, ctx, req) < 0)
-		return UBUS_STATUS_UNKNOWN_ERROR;
 
-        write_log(LOG_INFO, "Setting up serial protocol for port %s...", portname);
-	sp_set_baudrate(port, 9600);
-	sp_set_bits(port, 8);
-	sp_set_parity(port, SP_PARITY_NONE);
-	sp_set_stopbits(port, 1);
-	sp_set_flowcontrol(port, SP_FLOWCONTROL_NONE);
+	int status = setup_port(portname, port, &pkg);
+        if(status != 0)
+                return status;
 
 	char outmsg[256];
-	sprintf(outmsg, "{\"action\": \"%s\", \"pin\": %d}", method, pin);
-        write_log(LOG_INFO, "Writing message to port %s...", portname);
-        if(try_handle_err(sp_blocking_write(port, outmsg, strlen(outmsg), 0), port, S_WRITE, &b, ctx, req) < 0) 
+	sprintf(outmsg, PIN_FMT, method, pin);
+
+	write_log(LOG_INFO, "Writing message to port %s...", portname);
+	if (s_handle_err(sp_blocking_write(port, outmsg, strlen(outmsg), 0), port, S_WRITE, &pkg) < 0)
 		return UBUS_STATUS_UNKNOWN_ERROR;
-        write_log(LOG_INFO, "Writing to port %s finished", portname);
+	write_log(LOG_INFO, "Writing to port %s finished", portname);
 
 	int bytes = 256;
 	char *buf = calloc(bytes, sizeof(char));
 
 	write_log(LOG_ERR, "Reading bytes in port %s", portname);
-        if(try_handle_err(sp_blocking_read(port, buf, bytes, 2000), port, S_WRITE, &b, ctx, req) < 0) 
+	if (s_handle_err(sp_blocking_read(port, buf, bytes, READ_TIMEOUT), port, S_WRITE, &pkg) < 0)
 		return UBUS_STATUS_UNKNOWN_ERROR;
+	write_log(LOG_ERR, "Reading from port %s finished", portname);
 
 	blobmsg_add_json_from_string(&b, buf);
 	free(buf);
@@ -152,7 +120,8 @@ int esp_get(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_reque
 	(void)obj;
 	(void)ctx;
 	struct blob_attr *tb[__ESP_GET_POL_MAX];
-	struct blob_buf b = {};
+	struct blob_buf b   = {};
+	struct ubus_pkg pkg = { .b = &b, .ctx = ctx, .req = req };
 	blob_buf_init(&b, 0);
 
 	blobmsg_parse(esp_get_policy, __ESP_GET_POL_MAX, tb, blob_data(msg), blob_len(msg));
@@ -166,35 +135,25 @@ int esp_get(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_reque
 
 	struct sp_port *port = NULL;
 
-        write_log(LOG_INFO, "Getting port %s...", portname);
-        if(try_handle_err(sp_get_port_by_name(portname, &port), port, S_GET_PORT, &b, ctx, req) < 0)
-		return UBUS_STATUS_INVALID_ARGUMENT;
-
-        write_log(LOG_INFO, "Opening port %s...", portname);
-        if(try_handle_err(sp_open(port, SP_MODE_READ_WRITE), port, S_OPEN_PORT, &b, ctx, req))
-                return UBUS_STATUS_UNKNOWN_ERROR;
-
-        write_log(LOG_INFO, "Setting up serial protocol for port %s...", portname);
-	sp_set_baudrate(port, 9600);
-	sp_set_bits(port, 8);
-	sp_set_parity(port, SP_PARITY_NONE);
-	sp_set_stopbits(port, 1);
-	sp_set_flowcontrol(port, SP_FLOWCONTROL_NONE);
+	int status = setup_port(portname, port, &pkg);
+        if(status != 0)
+                return status;
 
 	char outmsg[256];
-	sprintf(outmsg, "{\"action\": \"get\", \"sensor\": \"%s\", \"pin\": %d, \"model\": \"%s\"}", sensor,
-		pin, model);
+	sprintf(outmsg, GET_FMT, sensor, pin, model);
+
 	sp_flush(port, SP_BUF_INPUT);
-        write_log(LOG_INFO, "Writing message to port %s...", portname);
-	if (try_handle_err(sp_blocking_write(port, outmsg, strlen(outmsg) + 1, 0), port, S_WRITE, &b, ctx, req) < 0)
+
+	write_log(LOG_INFO, "Writing message to port %s...", portname);
+	if (s_handle_err(sp_blocking_write(port, outmsg, strlen(outmsg) + 1, 0), port, S_WRITE, &pkg) < 0)
 		return UBUS_STATUS_UNKNOWN_ERROR;
-        write_log(LOG_INFO, "Writing to port %s finished", portname);
-        
+	write_log(LOG_INFO, "Writing to port %s finished", portname);
+
 	int bytes = 256;
 	char *buf = calloc(bytes, sizeof(char));
 
 	write_log(LOG_ERR, "Reading bytes in port %s", portname);
-	if (try_handle_err(sp_blocking_read(port, buf, bytes, 2000), port, S_READ, &b, ctx, req) < 0)
+	if (s_handle_err(sp_blocking_read(port, buf, bytes, READ_TIMEOUT), port, S_READ, &pkg) < 0)
 		return UBUS_STATUS_UNKNOWN_ERROR;
 	blobmsg_add_json_from_string(&b, buf);
 	free(buf);
@@ -263,7 +222,7 @@ int initialise_ubus(struct ubus_context **ctx)
 		closelog();
 		return -2;
 	}
-        return 0;
+	return 0;
 }
 
 void run_ubus()

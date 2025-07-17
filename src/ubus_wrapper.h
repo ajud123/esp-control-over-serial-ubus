@@ -1,5 +1,11 @@
 #include <libubus.h>
-enum { ERR_GET_FAILED = 50, ERR_OPEN_FAILED, ERR_WRITE_FAILED };
+enum { ERR_GET_FAILED = 50, ERR_OPEN_FAILED, ERR_READ_FAILED, ERR_WRITE_FAILED, ERR_INVALID_DEVICE, ERR_UNKNOWN_FN };
+
+struct ubus_pkg {
+	struct blob_buf *b;
+	struct ubus_context *ctx;
+	struct ubus_request_data *req;
+};
 
 /*
  * Initialises the ubus and uloop systems.
