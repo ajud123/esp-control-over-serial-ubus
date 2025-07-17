@@ -100,13 +100,14 @@ int esp_pin(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_reque
 	int pin	       = blobmsg_get_u32(tb[ESP_PIN_PIN]);
 
 	struct sp_port *port = NULL;
-
+        write_log(LOG_INFO, "Getting port %s...", portname);
 	if (try_handle_err(sp_get_port_by_name(portname, &port), port, S_GET_PORT, &b, ctx, req) < 0)
 		return UBUS_STATUS_INVALID_ARGUMENT;
-
+        write_log(LOG_INFO, "Opening port %s...", portname);
 	if (try_handle_err(sp_open(port, SP_MODE_READ_WRITE), port, S_OPEN_PORT, &b, ctx, req) < 0)
 		return UBUS_STATUS_UNKNOWN_ERROR;
 
+        write_log(LOG_INFO, "Setting up serial protocol for port %s...", portname);
 	sp_set_baudrate(port, 9600);
 	sp_set_bits(port, 8);
 	sp_set_parity(port, SP_PARITY_NONE);
@@ -115,14 +116,15 @@ int esp_pin(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_reque
 
 	char outmsg[256];
 	sprintf(outmsg, "{\"action\": \"%s\", \"pin\": %d}", method, pin);
+        write_log(LOG_INFO, "Writing message to port %s...", portname);
         if(try_handle_err(sp_blocking_write(port, outmsg, strlen(outmsg), 0), port, S_WRITE, &b, ctx, req) < 0) 
 		return UBUS_STATUS_UNKNOWN_ERROR;
+        write_log(LOG_INFO, "Writing to port %s finished", portname);
 
 	int bytes = 256;
 	char *buf = calloc(bytes, sizeof(char));
 
-	write_log(LOG_ERR, "Reading bytes in port %s: %s", portname);
-
+	write_log(LOG_ERR, "Reading bytes in port %s", portname);
         if(try_handle_err(sp_blocking_read(port, buf, bytes, 2000), port, S_WRITE, &b, ctx, req) < 0) 
 		return UBUS_STATUS_UNKNOWN_ERROR;
 
@@ -164,21 +166,15 @@ int esp_get(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_reque
 
 	struct sp_port *port = NULL;
 
-	if (sp_get_port_by_name(portname, &port) < 0) {
-		char *errmsg = sp_last_error_message();
-		write_log(LOG_ERR, "Failed to get port %s: %s", portname, errmsg);
-		sp_free_error_message(errmsg);
+        write_log(LOG_INFO, "Getting port %s...", portname);
+        if(try_handle_err(sp_get_port_by_name(portname, &port), port, S_GET_PORT, &b, ctx, req) < 0)
 		return UBUS_STATUS_INVALID_ARGUMENT;
-	}
-	if (sp_open(port, SP_MODE_READ_WRITE) < 0) {
-		char *errmsg = sp_last_error_message();
-		write_log(LOG_ERR, "Failed to open port %s: %s", portname, errmsg);
-		sp_free_error_message(errmsg);
-		sp_close(port);
-		sp_free_port(port);
-		return UBUS_STATUS_UNKNOWN_ERROR;
-	}
 
+        write_log(LOG_INFO, "Opening port %s...", portname);
+        if(try_handle_err(sp_open(port, SP_MODE_READ_WRITE), port, S_OPEN_PORT, &b, ctx, req))
+                return UBUS_STATUS_UNKNOWN_ERROR;
+
+        write_log(LOG_INFO, "Setting up serial protocol for port %s...", portname);
 	sp_set_baudrate(port, 9600);
 	sp_set_bits(port, 8);
 	sp_set_parity(port, SP_PARITY_NONE);
@@ -189,25 +185,17 @@ int esp_get(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_reque
 	sprintf(outmsg, "{\"action\": \"get\", \"sensor\": \"%s\", \"pin\": %d, \"model\": \"%s\"}", sensor,
 		pin, model);
 	sp_flush(port, SP_BUF_INPUT);
-	if (sp_blocking_write(port, outmsg, strlen(outmsg) + 1, 0) < 0) {
-		char *errmsg = sp_last_error_message();
-		write_log(LOG_ERR, "Failed to write to port %s: %s", portname, errmsg);
-		sp_free_error_message(errmsg);
-		sp_close(port);
-		sp_free_port(port);
+        write_log(LOG_INFO, "Writing message to port %s...", portname);
+	if (try_handle_err(sp_blocking_write(port, outmsg, strlen(outmsg) + 1, 0), port, S_WRITE, &b, ctx, req) < 0)
 		return UBUS_STATUS_UNKNOWN_ERROR;
-	}
+        write_log(LOG_INFO, "Writing to port %s finished", portname);
+        
 	int bytes = 256;
 	char *buf = calloc(bytes, sizeof(char));
 
-	if (sp_blocking_read(port, buf, bytes, 2000) < 0) {
-		char *errmsg = sp_last_error_message();
-		write_log(LOG_ERR, "Failed to get read bytes in port %s: %s", portname, errmsg);
-		sp_free_error_message(errmsg);
-		sp_close(port);
-		sp_free_port(port);
+	write_log(LOG_ERR, "Reading bytes in port %s", portname);
+	if (try_handle_err(sp_blocking_read(port, buf, bytes, 2000), port, S_READ, &b, ctx, req) < 0)
 		return UBUS_STATUS_UNKNOWN_ERROR;
-	}
 	blobmsg_add_json_from_string(&b, buf);
 	free(buf);
 
